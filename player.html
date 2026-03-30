@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pro UK Player</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body, html { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
+
+        .player-wrapper {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: #000;
+            margin: auto;
+            top: 50%;
+            transform: translateY(-50%);
+            overflow: hidden;
+        }
+
+        video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+
+        /* LOADING EKRANI - YENİ TASARIM */
+        #loadingOverlay {
+            position: absolute; inset: 0; z-index: 90; background: #000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px;
+            transition: opacity .4s ease; pointer-events: none;
+        }
+        #loadingOverlay.fadeout { opacity: 0; }
+        #loadingOverlay.gone { display: none; }
+        
+        /* SABİT UK LOGOSU (Animasyon Yerine) */
+        .uk-load-logo {
+            font-size: 42px; font-weight: bold; color: #ebc035;
+            letter-spacing: 5px; text-shadow: 0 0 20px rgba(235,192,53,0.5);
+            font-family: 'Bebas Neue', Impact, sans-serif;
+        }
+
+        .load-text { color: #fff; font-size: 15px; opacity: .9; }
+        .load-sub { color: rgba(255,255,255,.35); font-size: 12px; margin-top: -5px; }
+
+        /* TIKLAMA ALANI VE ORTA BUTON */
+        .video-overlay { position: absolute; inset: 0; z-index: 5; cursor: pointer; }
+        #midBtn {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 10; pointer-events: none; transition: opacity 0.3s;
+        }
+        .play-circle {
+            width: 60px; height: 60px; background: rgba(0,0,0,0.5);
+            border: 2px solid #ebc035; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        /* ALT KONTROLLER */
+        .bottom-controls {
+            position: absolute; bottom: 0; left: 0; right: 0; z-index: 20;
+            background: linear-gradient(transparent, rgba(0,0,0,0.9));
+            padding: 10px 15px 15px; transition: opacity 0.4s;
+        }
+        .hidden { opacity: 0 !important; visibility: hidden; }
+
+        /* SEEK BAR */
+        .seek-container { width: 100%; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; margin-bottom: 12px; position: relative; }
+        #progressFill { position: absolute; left: 0; top: 0; height: 100%; background: #ebc035; width: 0%; border-radius: 2px; }
+        .seek-input { position: absolute; top: -8px; left: 0; width: 100%; height: 20px; appearance: none; -webkit-appearance: none; background: transparent; outline: none; z-index: 5; }
+        .seek-input::-webkit-slider-thumb { -webkit-appearance: none; height: 14px; width: 14px; border-radius: 50%; background: #ebc035; border: 2px solid #000; }
+
+        .btn-row { display: flex; align-items: center; justify-content: space-between; }
+        .group { display: flex; align-items: center; gap: 12px; }
+        .btn { background: none; border: none; cursor: pointer; display: flex; align-items: center; }
+        .btn svg { fill: white; width: 22px; height: 22px; }
+        .speed-tag { color: #fff; font-size: 12px; font-weight: bold; background: rgba(255,255,255,0.15); padding: 4px 8px; border-radius: 4px; }
+
+        /* SARMA SIRASINDA ÇIKAN LOADER TAMAMEN KALDIRILDI (smallLoader Display None yapıldı) */
+        #smallLoader { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div class="player-wrapper" id="pWrapper">
+    <div id="loadingOverlay"> 
+        <div class="uk-load-logo">UK</div> 
+        <div class="load-text">Video Yükleniyor...</div> 
+        <div class="load-sub">Lütfen bekleyiniz</div> 
+    </div>
+
+    <div id="smallLoader"></div>
+
+    <video id="v" playsinline webkit-playsinline></video>
+    <div class="video-overlay" id="clickArea"></div>
+
+    <div id="midBtn">
+        <div class="play-circle"><svg viewBox="0 0 24 24" width="30" height="30" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
+    </div>
+
+    <div class="bottom-controls" id="ui">
+        <div class="seek-container">
+            <div id="progressFill"></div>
+            <input type="range" id="seek" class="seek-input" value="0" step="0.1" min="0">
+        </div>
+        <div class="btn-row">
+            <div class="group">
+                <button class="btn" id="playBtn"><svg id="pIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+                <span id="time" style="color:#fff; font-size:11px; font-family:monospace;">00:00 / 00:00</span>
+            </div>
+            <div class="group">
+                <div id="speed" class="speed-tag" style="cursor:pointer">1x</div>
+                <button class="btn" id="fs"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const v = document.getElementById('v'), ui = document.getElementById('ui'), mid = document.getElementById('midBtn');
+    const seek = document.getElementById('seek'), fill = document.getElementById('progressFill'), pIcon = document.getElementById('pIcon');
+    const time = document.getElementById('time'), speedBtn = document.getElementById('speed');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+
+    const AD_URL = 'https://omg10.com/4/10802497';
+    let adShown = false;
+
+    const videoUrl = new URLSearchParams(window.location.search).get('video');
+    if(videoUrl) v.src = decodeURIComponent(videoUrl);
+
+    function clearOverlay() {
+        loadingOverlay.classList.add('fadeout'); 
+        setTimeout(() => { loadingOverlay.classList.add('gone'); }, 420);
+    }
+    v.onloadedmetadata = clearOverlay;
+    v.oncanplay = clearOverlay;
+
+    function togglePlay() {
+        if (v.paused) {
+            if (!adShown) {
+                adShown = true;
+                window.open(AD_URL, '_blank');
+                setTimeout(() => { v.play().catch(e=>{}); }, 250);
+            } else {
+                v.play().catch(e=>{});
+            }
+            pIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+            mid.classList.add('hidden');
+            autoHide();
+        } else {
+            v.pause();
+            pIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+            mid.classList.remove('hidden');
+            ui.classList.remove('hidden');
+        }
+    }
+
+    document.getElementById('clickArea').onclick = togglePlay;
+    document.getElementById('playBtn').onclick = (e) => { e.stopPropagation(); togglePlay(); };
+
+    let timer;
+    function autoHide() {
+        clearTimeout(timer);
+        if (!v.paused) { timer = setTimeout(() => { ui.classList.add('hidden'); }, 3000); }
+    }
+
+    document.getElementById('clickArea').onmousemove = () => { ui.classList.remove('hidden'); autoHide(); };
+    document.getElementById('clickArea').ontouchstart = () => { ui.classList.remove('hidden'); autoHide(); };
+
+    v.ontimeupdate = () => {
+        if (!isSeeking) {
+            seek.value = v.currentTime;
+            seek.max = v.duration || 0;
+            fill.style.width = (seek.value / seek.max * 100) + "%";
+        }
+        const f = (s) => {
+            let m = Math.floor(s / 60), sec = Math.floor(s % 60);
+            return (m < 10 ? '0'+m : m) + ":" + (sec < 10 ? '0'+sec : sec);
+        };
+        time.textContent = `${f(v.currentTime)} / ${f(v.duration || 0)}`;
+    };
+
+    let isSeeking = false;
+    seek.oninput = () => { isSeeking = true; fill.style.width = (seek.value / seek.max * 100) + "%"; };
+    seek.onchange = () => { v.currentTime = seek.value; isSeeking = false; autoHide(); };
+
+    speedBtn.onclick = (e) => {
+        e.stopPropagation();
+        v.playbackRate = v.playbackRate >= 2 ? 1 : v.playbackRate + 0.5;
+        speedBtn.textContent = v.playbackRate + 'x';
+    };
+
+    document.getElementById('fs').onclick = (e) => {
+        e.stopPropagation();
+        if (!document.fullscreenElement) {
+            document.getElementById('pWrapper').requestFullscreen?.() || v.webkitEnterFullscreen?.();
+        } else { document.exitFullscreen(); }
+    };
+
+    // SARMADA LOADER ÇIKMASINI ENGELLEMEK İÇİN FONKSİYONLAR BOŞALTILDI
+    v.onwaiting = () => {}; 
+    v.onplaying = () => {};
+</script>
+
+</body>
+</html>
